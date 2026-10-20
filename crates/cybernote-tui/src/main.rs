@@ -429,7 +429,7 @@ fn draw(frame: &mut Frame, app: &App) {
         .constraints([
             Constraint::Length(3),
             Constraint::Min(5),
-            Constraint::Length(2),
+            Constraint::Length(4),
         ])
         .split(area);
     draw_header(frame, rows[0], app, p);
@@ -444,13 +444,62 @@ fn draw(frame: &mut Frame, app: &App) {
     } else {
         app.status.clone()
     };
+    let controls = [
+        [
+            ("j/k ↑↓", "move"),
+            ("/", "search"),
+            ("n", "new"),
+            ("e", "edit"),
+            ("a", "attach"),
+        ],
+        [
+            ("d", "trash"),
+            ("u", "restore"),
+            ("p", "themes"),
+            ("?", "help"),
+            ("q", "quit"),
+        ],
+    ];
+    let control_lines = controls.into_iter().map(|group| {
+        let mut spans = Vec::new();
+        for (index, (key, label)) in group.into_iter().enumerate() {
+            if index > 0 {
+                spans.push(Span::styled(
+                    "  ·  ",
+                    Style::default().fg(p.secondary).bg(p.panel),
+                ));
+            }
+            spans.push(Span::styled(
+                format!(" {key} "),
+                Style::default()
+                    .fg(p.bg)
+                    .bg(p.accent)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::styled(
+                format!(" {label} "),
+                Style::default()
+                    .fg(p.text)
+                    .bg(p.panel)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        }
+        Line::from(spans)
+    });
+    let footer = control_lines
+        .chain(std::iter::once(Line::from(Span::styled(
+            prompt,
+            Style::default().fg(p.text).bg(p.panel),
+        ))))
+        .collect::<Vec<_>>();
     frame.render_widget(
-        Paragraph::new(prompt)
-            .style(Style::default().fg(p.accent).bg(p.bg))
+        Paragraph::new(Text::from(footer))
+            .style(Style::default().fg(p.text).bg(p.panel))
             .block(
                 Block::default()
                     .borders(Borders::TOP)
-                    .border_style(Style::default().fg(p.accent)),
+                    .border_style(Style::default().fg(p.accent))
+                    .style(Style::default().bg(p.panel)),
             ),
         rows[2],
     );
