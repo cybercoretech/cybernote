@@ -1,6 +1,6 @@
 # 🎨 Cybercore theme system
 
-The project sites currently expose four named palettes. The Rust terminal UI offers eight palettes; Android can adopt the expanded set while adapting controls to native Material components.
+The project sites currently expose four named palettes. The Rust terminal UI offers twelve palettes, including four dark black and gray options; Android can adopt the expanded set while adapting controls to native Material components.
 
 | Theme | Accent | Secondary | Character |
 | --- | --- | --- | --- |
@@ -12,5 +12,9 @@ The project sites currently expose four named palettes. The Rust terminal UI off
 | Rose Quartz | Neon rose | Warm gold | Soft but vivid |
 | Arctic | Ice blue | Violet | Crisp and bright |
 | Solar Flare | Radiant gold | Hot orange | Warm high energy |
+| OLED Black | Electric cyan | Hot pink | True black background |
+| Graphite | Acid green | Teal | Near-black gray |
+| Charcoal | Warm amber | Rose | Deep charcoal gray |
+| Gunmetal | Ice blue | Violet | Blue-black slate |
 
 Theme selection is local presentation state. It never changes note content or the vault format. Sites respect reduced-motion settings and maintain readable contrast; terminal themes avoid relying on color alone to signal selection.

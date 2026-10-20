@@ -33,7 +33,7 @@ struct Palette {
     muted: Color,
 }
 
-const PALETTES: [Palette; 8] = [
+const PALETTES: [Palette; 12] = [
     Palette {
         name: "CYBERCORE / Neon Cyan",
         bg: Color::Rgb(7, 12, 18),
@@ -105,6 +105,42 @@ const PALETTES: [Palette; 8] = [
         secondary: Color::Rgb(255, 104, 69),
         text: Color::Rgb(255, 245, 220),
         muted: Color::Rgb(176, 147, 99),
+    },
+    Palette {
+        name: "CYBERCORE / OLED Black",
+        bg: Color::Rgb(0, 0, 0),
+        panel: Color::Rgb(10, 12, 16),
+        accent: Color::Rgb(0, 235, 255),
+        secondary: Color::Rgb(255, 60, 196),
+        text: Color::Rgb(237, 244, 250),
+        muted: Color::Rgb(133, 148, 164),
+    },
+    Palette {
+        name: "CYBERCORE / Graphite",
+        bg: Color::Rgb(11, 12, 14),
+        panel: Color::Rgb(24, 26, 30),
+        accent: Color::Rgb(166, 255, 72),
+        secondary: Color::Rgb(82, 220, 198),
+        text: Color::Rgb(236, 239, 242),
+        muted: Color::Rgb(151, 158, 167),
+    },
+    Palette {
+        name: "CYBERCORE / Charcoal",
+        bg: Color::Rgb(17, 18, 20),
+        panel: Color::Rgb(34, 36, 40),
+        accent: Color::Rgb(255, 190, 92),
+        secondary: Color::Rgb(255, 111, 128),
+        text: Color::Rgb(245, 243, 239),
+        muted: Color::Rgb(169, 170, 172),
+    },
+    Palette {
+        name: "CYBERCORE / Gunmetal",
+        bg: Color::Rgb(12, 15, 19),
+        panel: Color::Rgb(25, 31, 38),
+        accent: Color::Rgb(111, 205, 255),
+        secondary: Color::Rgb(196, 151, 255),
+        text: Color::Rgb(229, 237, 245),
+        muted: Color::Rgb(145, 158, 174),
     },
 ];
 
@@ -313,8 +349,20 @@ fn handle_key(terminal: &mut Term, app: &mut App, key: KeyEvent) -> io::Result<b
                     app.palette = (app.palette + 1) % PALETTES.len();
                     store_palette(&app.palette_path, app.palette);
                     app.modal = Some(modal);
-                } else if is_themes && let KeyCode::Char(n @ '1'..='8') = key.code {
+                } else if is_themes && let KeyCode::Char(n @ '1'..='9') = key.code {
                     app.palette = n.to_digit(10).unwrap_or(1) as usize - 1;
+                    store_palette(&app.palette_path, app.palette);
+                    app.modal = Some(modal);
+                } else if is_themes && key.code == KeyCode::Char('0') {
+                    app.palette = 9;
+                    store_palette(&app.palette_path, app.palette);
+                    app.modal = Some(modal);
+                } else if is_themes && key.code == KeyCode::Char('-') {
+                    app.palette = 10;
+                    store_palette(&app.palette_path, app.palette);
+                    app.modal = Some(modal);
+                } else if is_themes && key.code == KeyCode::Char('=') {
+                    app.palette = 11;
                     store_palette(&app.palette_path, app.palette);
                     app.modal = Some(modal);
                 } else {
@@ -1202,7 +1250,11 @@ fn draw_modal(frame: &mut Frame, area: Rect, modal: &Modal, app: &App, p: Palett
         );
         return;
     }
-    let box_area = centered_rect(72, 72, area);
+    let box_area = if matches!(modal, Modal::Themes) {
+        centered_rect(84, 90, area)
+    } else {
+        centered_rect(72, 72, area)
+    };
     frame.render_widget(Clear, box_area);
     let (title, text) = match modal {
         Modal::Help => (
@@ -1239,8 +1291,12 @@ fn draw_modal(frame: &mut Frame, area: Rect, modal: &Modal, app: &App, p: Palett
                 "6  ROSE QUARTZ     neon rose + warm gold",
                 "7  ARCTIC          ice blue + violet",
                 "8  SOLAR FLARE     radiant gold + hot orange",
+                "9  OLED BLACK      pure black + cyan",
+                "0  GRAPHITE        near-black + acid green",
+                "-  CHARCOAL       dark gray + warm amber",
+                "=  GUNMETAL       blue-black + ice blue",
                 "",
-                "1–8 choose · ↑/↓ browse · Enter apply · Esc close",
+                "1–9, 0, -, = choose · ↑/↓ browse · Enter apply · Esc close",
                 "",
                 "Theme changes apply instantly and never alter your notes.",
             ],

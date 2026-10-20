@@ -52,7 +52,7 @@ The new-note template library includes blank, daily, meeting, project brief, res
 
 ### 🎨 Built-in palettes
 
-Neon Cyan, Plasma, Ember, Biohazard, Aurora, Rose Quartz, Arctic, and Solar Flare. Press `p` to browse and apply palettes instantly, or `t` to cycle them. The choice persists between launches and only changes the interface; no theme touches vault data.
+Neon Cyan, Plasma, Ember, Biohazard, Aurora, Rose Quartz, Arctic, Solar Flare, OLED Black, Graphite, Charcoal, and Gunmetal. The four new dark palettes range from true black to dark gray. Press `p` to browse and apply palettes instantly, or `t` to cycle them. The choice persists between launches and only changes the interface; no theme touches vault data.
 
 ## 🗃️ Vault layout
 
