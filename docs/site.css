@@ -6,3 +6,34 @@ html[data-theme="bio"]{--bg:#09120c;--surface:#112016;--surface2:#192b1d;--accen
 @keyframes pulse{50%{opacity:.35;box-shadow:0 0 3px var(--accent)}}@keyframes float{50%{transform:perspective(1000px) rotateY(-1deg) rotateX(0) translateY(-9px)}}@keyframes shine{25%,100%{transform:translateX(100%)}}@keyframes orbit{to{transform:rotate(360deg) translateX(13px) rotate(-360deg)}}@keyframes marquee{to{transform:translateX(-50%)}}
 @media(max-width:850px){.hero{grid-template-columns:1fr;padding-block:65px;min-height:auto}.terminal-card{max-width:650px;width:100%;margin:25px auto 0}.roadmap{grid-template-columns:1fr;gap:30px}.feature-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:580px){.wrap{width:min(100% - 32px,1160px)}.topbar{height:68px}nav{display:none}.theme-trigger span{display:none}.hero{padding-top:58px}.lede{font-size:14px}.hero-actions{flex-wrap:wrap}.terminal-body{grid-template-columns:108px 1fr}.terminal-body aside{font-size:8px}.terminal-body article{padding:13px 10px}.term-head{font-size:8px}.term-row{padding:12px 8px}.feature-grid{grid-template-columns:1fr}.section{padding-block:80px}.security-inner{align-items:flex-start;flex-direction:column}.security-stamp{width:140px;height:140px;align-self:center}.cta{align-items:flex-start;flex-direction:column;padding:28px;margin-bottom:65px}.footer{padding-block:24px;align-items:flex-start;flex-direction:column}.footer>div{flex-wrap:wrap}.milestone{grid-template-columns:32px 1fr}.state{grid-column:2}.theme-options{grid-template-columns:1fr 1fr}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* Living aurora: layered color currents stay behind the interface. */
+body{isolation:isolate;background:linear-gradient(145deg,#070c12 0%,var(--bg) 48%,#080d16 100%)}
+html[data-theme="plasma"] body{background:linear-gradient(145deg,#0d0818 0%,var(--bg) 48%,#090d1a 100%)}
+html[data-theme="ember"] body{background:linear-gradient(145deg,#160c09 0%,var(--bg) 48%,#160916 100%)}
+html[data-theme="bio"] body{background:linear-gradient(145deg,#09120c 0%,var(--bg) 48%,#071515 100%)}
+.flow-field{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;contain:strict;background:radial-gradient(ellipse at 50% 0%,rgba(7,12,18,.14),transparent 67%)}
+.flow-field:before,.flow-field:after{content:"";position:absolute;inset:-45%;opacity:.42;filter:blur(72px);will-change:transform,background-position;mix-blend-mode:screen}
+.flow-field:before{background:radial-gradient(ellipse 34% 22% at 24% 36%,var(--accent),transparent 72%),radial-gradient(ellipse 28% 19% at 71% 44%,var(--secondary),transparent 74%),radial-gradient(ellipse 37% 20% at 54% 78%,#315bff,transparent 75%);animation:aurora-drift 34s ease-in-out infinite alternate}
+.flow-field:after{inset:-30%;opacity:.2;filter:blur(44px);background:radial-gradient(ellipse 30% 15% at 30% 68%,var(--secondary),transparent 72%),radial-gradient(ellipse 25% 16% at 80% 25%,var(--accent),transparent 74%);animation:aurora-drift-reverse 27s ease-in-out infinite alternate}
+.flow-field{background-image:linear-gradient(rgba(146,205,225,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(146,205,225,.025) 1px,transparent 1px);background-size:72px 72px,72px 72px}
+.ambient{position:fixed;z-index:-1;animation:orb-drift 24s ease-in-out infinite alternate}.ambient-b{animation-delay:-12s}
+.topbar,.footer,.hero,.section,.security-inner,.cta{position:relative;z-index:1}
+body:before{z-index:4;opacity:.09}
+.hero-copy,.phone-stage,.terminal-card{animation:content-arrive .9s cubic-bezier(.2,.75,.25,1) both}
+.terminal-card{animation-name:float,content-arrive;animation-duration:6s,.9s;animation-timing-function:ease-in-out,cubic-bezier(.2,.75,.25,1);animation-iteration-count:infinite,1;animation-delay:0s,.05s}
+.feature-card{transform-style:preserve-3d}.feature-card:before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(115deg,transparent 20%,rgba(255,255,255,.075) 48%,transparent 72%);transform:translateX(-120%);transition:transform .7s;pointer-events:none}
+.feature-card:hover:before{transform:translateX(120%)}
+.feature-card:hover{box-shadow:0 20px 55px rgba(0,0,0,.22),0 0 32px var(--glow)}
+.modal{animation:modal-arrive .32s cubic-bezier(.16,1,.3,1) both;background:linear-gradient(145deg,color-mix(in srgb,var(--surface) 92%,var(--accent)),var(--surface) 60%);backdrop-filter:blur(22px)}
+.modal::backdrop{animation:backdrop-in .25s ease both}
+.theme-option{transition:transform .22s,border-color .22s,box-shadow .22s}.theme-option:hover{transform:translateY(-3px) scale(1.015)}
+.button:focus-visible,.theme-trigger:focus-visible,.theme-option:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+@keyframes aurora-drift{0%{transform:translate3d(-5%,2%,0) rotate(-8deg) scale(1);background-position:0 0,100% 0,50% 100%}50%{transform:translate3d(3%,-3%,0) rotate(4deg) scale(1.12);background-position:20% 40%,70% 20%,42% 70%}100%{transform:translate3d(7%,4%,0) rotate(11deg) scale(1.06);background-position:100% 60%,0 100%,60% 0}}
+@keyframes aurora-drift-reverse{0%{transform:translate3d(5%,-4%,0) rotate(9deg) scale(1.08)}100%{transform:translate3d(-6%,5%,0) rotate(-9deg) scale(.96)}}
+@keyframes orb-drift{0%{transform:translate3d(-2%,0,0) scale(.94)}100%{transform:translate3d(4%,7%,0) scale(1.12)}}
+@keyframes content-arrive{from{opacity:0;translate:0 18px}to{opacity:1;translate:0 0}}
+@keyframes modal-arrive{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes backdrop-in{from{opacity:0}to{opacity:1}}
+@media(max-width:700px){.flow-field:before{opacity:.28;filter:blur(56px)}.flow-field:after{opacity:.13}.flow-field{background-size:48px 48px,48px 48px}}
+@media(prefers-reduced-motion:reduce){.flow-field:before,.flow-field:after,.ambient,.hero-copy,.phone-stage,.terminal-card{animation:none!important}.flow-field:before,.flow-field:after{transform:none!important}.feature-card:before{display:none}}
