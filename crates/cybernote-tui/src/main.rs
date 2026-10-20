@@ -167,6 +167,10 @@ enum Modal {
     EditMenu {
         selected: usize,
     },
+    ConfirmDelete {
+        note: Note,
+        confirm: bool,
+    },
     Vaults {
         selected: usize,
     },
@@ -387,6 +391,43 @@ fn handle_key(terminal: &mut Term, app: &mut App, key: KeyEvent) -> io::Result<b
                     })
                 }
                 _ => app.modal = Some(Modal::Templates { selected }),
+            },
+            Modal::ConfirmDelete { note, mut confirm } => match key.code {
+                KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('q') => {
+                    app.status = "Delete cancelled; note is unchanged.".into();
+                }
+                KeyCode::Left | KeyCode::Char('h') => {
+                    confirm = false;
+                    app.modal = Some(Modal::ConfirmDelete { note, confirm });
+                }
+                KeyCode::Right | KeyCode::Char('l') => {
+                    confirm = true;
+                    app.modal = Some(Modal::ConfirmDelete { note, confirm });
+                }
+                KeyCode::Tab => {
+                    confirm = !confirm;
+                    app.modal = Some(Modal::ConfirmDelete { note, confirm });
+                }
+                KeyCode::Char('y') => {
+                    match app.vault.trash(&note.id) {
+                        Ok(()) => {
+                            app.status = format!("🗃️ Moved ‘{}’ to recoverable trash.", note.title)
+                        }
+                        Err(error) => app.status = format!("Could not move note to trash: {error}"),
+                    }
+                    app.refresh();
+                }
+                KeyCode::Enter if confirm => {
+                    match app.vault.trash(&note.id) {
+                        Ok(()) => {
+                            app.status = format!("🗃️ Moved ‘{}’ to recoverable trash.", note.title)
+                        }
+                        Err(error) => app.status = format!("Could not move note to trash: {error}"),
+                    }
+                    app.refresh();
+                }
+                KeyCode::Enter => app.status = "Delete cancelled; note is unchanged.".into(),
+                _ => app.modal = Some(Modal::ConfirmDelete { note, confirm }),
             },
             Modal::EditMenu { mut selected } => match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => {}
@@ -758,13 +799,10 @@ fn handle_key(terminal: &mut Term, app: &mut App, key: KeyEvent) -> io::Result<b
         }
         KeyCode::Char('d') => {
             if let Some(note) = app.selected_note().cloned() {
-                match app.vault.trash(&note.id) {
-                    Ok(()) => {
-                        app.status = "🗃️ Moved to Cybernote trash; recoverable on disk.".into()
-                    }
-                    Err(error) => app.status = format!("Could not move note: {error}"),
-                }
-                app.refresh();
+                app.modal = Some(Modal::ConfirmDelete {
+                    note,
+                    confirm: false,
+                });
             }
         }
         KeyCode::Char('u') => match app.vault.restore_latest_trash() {
@@ -1211,6 +1249,60 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App, p: Palette) {
 }
 
 fn draw_modal(frame: &mut Frame, area: Rect, modal: &Modal, app: &App, p: Palette) {
+    if let Modal::ConfirmDelete { note, confirm } = modal {
+        let box_area = centered_rect(72, 38, area);
+        frame.render_widget(Clear, box_area);
+        let cancel_style = if !confirm {
+            Style::default()
+                .fg(p.bg)
+                .bg(p.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(p.text).bg(p.panel)
+        };
+        let delete_style = if *confirm {
+            Style::default()
+                .fg(Color::White)
+                .bg(Color::Red)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(p.muted).bg(p.panel)
+        };
+        let lines = vec![
+            Line::from("Move this note to recoverable trash?"),
+            Line::from(Span::styled(
+                format!("📝 {}", note.title),
+                Style::default().fg(p.text).add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(
+                "You can restore the latest trashed note with u.",
+                Style::default().fg(p.muted),
+            )),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  Cancel  ", cancel_style),
+                Span::raw("   "),
+                Span::styled("  Move to trash  ", delete_style),
+            ]),
+            Line::from(Span::styled(
+                "←/→ or Tab choose · Enter select · y confirm · Esc cancel",
+                Style::default().fg(p.muted),
+            )),
+        ];
+        frame.render_widget(
+            Paragraph::new(Text::from(lines))
+                .style(Style::default().fg(p.text).bg(p.panel))
+                .block(
+                    Block::default()
+                        .title("  ⚠️ CONFIRM MOVE TO TRASH  ")
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::Red))
+                        .style(Style::default().bg(p.panel)),
+                ),
+            box_area,
+        );
+        return;
+    }
     if let Modal::Vaults { selected } = modal {
         let box_area = centered_rect(78, 70, area);
         frame.render_widget(Clear, box_area);
@@ -1270,7 +1362,7 @@ fn draw_modal(frame: &mut Frame, area: Rect, modal: &Modal, app: &App, p: Palett
                 "f             Create an in-vault folder",
                 "m             Move the selected note to a folder",
                 "v             Switch or add a vault",
-                "d             Move a note into recoverable trash",
+                "d             Confirm before moving a note into trash",
                 "u             Restore the most recently trashed note",
                 "p             Open the palette chooser",
                 "t             Cycle palettes",
@@ -1367,6 +1459,7 @@ fn draw_modal(frame: &mut Frame, area: Rect, modal: &Modal, app: &App, p: Palett
             *label,
             vec![value.as_str(), "", "Enter confirm · Esc cancel"],
         ),
+        Modal::ConfirmDelete { .. } => unreachable!("delete confirmation is rendered above"),
         Modal::Vaults { .. } => unreachable!("vault picker is rendered above"),
     };
     let lines = text

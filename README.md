@@ -40,7 +40,7 @@ The vault path can also be set with `CYBERNOTE_VAULT`. Cybernote creates `notes/
 | `f` | Create a folder inside the current vault |
 | `m` | Move the selected note to a folder; blank moves it to the vault root |
 | `v` | Open the vault switcher; press `a` there to add an existing folder, `x` to remove a saved entry |
-| `d` | Move a note to recoverable Cybernote trash |
+| `d` | Open a confirmation dialog before moving a note to recoverable trash |
 | `u` | Restore the most recently trashed note |
 | `p` | Open the palette chooser |
 | `t` | Cycle Cybercore palettes |
