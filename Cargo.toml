@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = ["crates/cybernote-core", "crates/cybernote-tui"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/cybercoretech/cybernote"
+
+[workspace.dependencies]
+thiserror = "2.0"
+uuid = { version = "1.20", features = ["v4"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
+crossterm = "0.29"
+dirs = "6.0"
+tempfile = "3.23"
+

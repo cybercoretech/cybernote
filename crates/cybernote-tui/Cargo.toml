@@ -1,0 +1,17 @@
+[package]
+name = "cybernote-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "cybernote"
+path = "src/main.rs"
+
+[dependencies]
+cybernote-core = { path = "../cybernote-core" }
+ratatui.workspace = true
+crossterm.workspace = true
+dirs.workspace = true
+tempfile.workspace = true
+
