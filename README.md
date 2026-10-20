@@ -32,7 +32,7 @@ The vault path can also be set with `CYBERNOTE_VAULT`. Cybernote creates `notes/
 | --- | --- |
 | `j` / `k`, arrows | Move through notes |
 | `/` | Search title, body, and tags |
-| `n` | Create a note, then open your preferred editor |
+| `n` | Choose a starter template, name the note, then open your preferred editor |
 | `e` | Open the edit studio: edit body, rename, change tags, or append Markdown templates |
 | `Enter` | Quick edit the body in your preferred editor |
 | `a` | Attach a file to the selected note |
@@ -48,7 +48,7 @@ The vault path can also be set with `CYBERNOTE_VAULT`. Cybernote creates `notes/
 | `?` | Open the command popup |
 | `q` | Quit |
 
-The edit studio offers direct Neovim and Nano choices, plus daily, meeting, project-brief, and checklist templates. Editing and metadata changes create a recoverable history snapshot.
+The new-note template library includes blank, daily, meeting, project brief, research, reading notes, weekly review, and checklist starters. The edit studio also offers direct Neovim and Nano choices, rename and tag controls, plus one-step template insertion. Editing and metadata changes create a recoverable history snapshot.
 
 ### 🎨 Built-in palettes
 

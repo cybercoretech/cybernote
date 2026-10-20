@@ -125,6 +125,9 @@ struct App {
 enum Modal {
     Help,
     Themes,
+    Templates {
+        selected: usize,
+    },
     EditMenu {
         selected: usize,
     },
@@ -138,7 +141,7 @@ enum Modal {
     },
 }
 enum PromptAction {
-    NewNote,
+    NewNote { template: usize },
     Attach,
     CreateFolder,
     MoveNote,
@@ -157,6 +160,35 @@ const EDIT_OPTIONS: [&str; 9] = [
     "Append meeting notes template",
     "Append project brief template",
     "Append checklist",
+];
+
+const NOTE_TEMPLATES: [(&str, &str); 8] = [
+    ("Blank note", ""),
+    (
+        "Daily note",
+        "## Focus\n\n- [ ] \n\n## Notes\n\n## Wrap-up\n",
+    ),
+    (
+        "Meeting notes",
+        "## Attendees\n\n## Agenda\n\n## Notes\n\n## Decisions\n\n## Action items\n- [ ] \n",
+    ),
+    (
+        "Project brief",
+        "## Outcome\n\n## Context\n\n## Plan\n1. \n\n## Risks\n\n## Next steps\n- [ ] \n",
+    ),
+    (
+        "Research notes",
+        "## Question\n\n## Summary\n\n## Findings\n\n## Sources\n\n## Open questions\n",
+    ),
+    (
+        "Reading notes",
+        "## Book / article\n\n## Key ideas\n\n## Quotes\n\n## My response\n\n## Follow-up\n- [ ] \n",
+    ),
+    (
+        "Weekly review",
+        "## Wins\n\n## What I learned\n\n## Open loops\n- [ ] \n\n## Next week\n",
+    ),
+    ("Checklist", "- [ ] \n- [ ] \n- [ ] \n"),
 ];
 
 impl App {
@@ -289,6 +321,25 @@ fn handle_key(terminal: &mut Term, app: &mut App, key: KeyEvent) -> io::Result<b
                     app.modal = Some(modal);
                 }
             }
+            Modal::Templates { mut selected } => match key.code {
+                KeyCode::Esc | KeyCode::Char('q') => {}
+                KeyCode::Up | KeyCode::Char('k') => {
+                    selected = selected.saturating_sub(1);
+                    app.modal = Some(Modal::Templates { selected });
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    selected = (selected + 1).min(NOTE_TEMPLATES.len() - 1);
+                    app.modal = Some(Modal::Templates { selected });
+                }
+                KeyCode::Enter => {
+                    app.modal = Some(Modal::Prompt {
+                        label: "New note title",
+                        value: String::new(),
+                        action: PromptAction::NewNote { template: selected },
+                    })
+                }
+                _ => app.modal = Some(Modal::Templates { selected }),
+            },
             Modal::EditMenu { mut selected } => match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => {}
                 KeyCode::Up | KeyCode::Char('k') => {
@@ -334,16 +385,8 @@ fn handle_key(terminal: &mut Term, app: &mut App, key: KeyEvent) -> io::Result<b
                                 });
                             }
                             5..=8 => {
-                                let addition = match selected {
-                                    5 => "## Focus\n\n- [ ] \n\n## Notes\n\n## Wrap-up\n",
-                                    6 => {
-                                        "## Attendees\n\n## Agenda\n\n## Notes\n\n## Decisions\n\n## Action items\n- [ ] \n"
-                                    }
-                                    7 => {
-                                        "## Outcome\n\n## Context\n\n## Plan\n1. \n\n## Risks\n\n## Next steps\n- [ ] \n"
-                                    }
-                                    _ => "\n- [ ] \n- [ ] \n- [ ] \n",
-                                };
+                                let template_index = [1, 2, 3, 7][selected - 5];
+                                let addition = NOTE_TEMPLATES[template_index].1;
                                 let body = if note.body.trim().is_empty() {
                                     addition.to_owned()
                                 } else {
@@ -430,8 +473,12 @@ fn handle_key(terminal: &mut Term, app: &mut App, key: KeyEvent) -> io::Result<b
                 KeyCode::Esc => app.status = "Cancelled.".into(),
                 KeyCode::Enter => {
                     match action {
-                        PromptAction::NewNote if !value.trim().is_empty() => {
-                            if let Ok(note) = app.vault.create(value.trim(), "", Vec::new()) {
+                        PromptAction::NewNote { template } if !value.trim().is_empty() => {
+                            if let Ok(note) = app.vault.create(
+                                value.trim(),
+                                NOTE_TEMPLATES[template].1,
+                                Vec::new(),
+                            ) {
                                 if let Err(error) = edit_note(terminal, &app.vault, &note, None) {
                                     app.status = format!("Editor failed: {error}");
                                 } else {
@@ -608,13 +655,7 @@ fn handle_key(terminal: &mut Term, app: &mut App, key: KeyEvent) -> io::Result<b
             app.query.clear();
             app.refresh();
         }
-        KeyCode::Char('n') => {
-            app.modal = Some(Modal::Prompt {
-                label: "New note title",
-                value: String::new(),
-                action: PromptAction::NewNote,
-            })
-        }
+        KeyCode::Char('n') => app.modal = Some(Modal::Templates { selected: 0 }),
         KeyCode::Char('e') if app.selected_note().is_some() => {
             app.modal = Some(Modal::EditMenu { selected: 0 })
         }
@@ -1169,7 +1210,7 @@ fn draw_modal(frame: &mut Frame, area: Rect, modal: &Modal, app: &App, p: Palett
             vec![
                 "j/k or ↑/↓   Navigate the note stream",
                 "/             Search notes instantly",
-                "n             Capture a new note in $EDITOR",
+                "n             Choose a starter template and create a note",
                 "e             Open the full edit menu",
                 "Enter         Quick edit in your preferred editor",
                 "a             Attach a file to the selected note",
@@ -1204,6 +1245,35 @@ fn draw_modal(frame: &mut Frame, area: Rect, modal: &Modal, app: &App, p: Palett
                 "Theme changes apply instantly and never alter your notes.",
             ],
         ),
+        Modal::Templates { selected } => {
+            let mut options = vec![
+                "Pick a starter, then name your note · Esc to cancel".to_owned(),
+                String::new(),
+            ];
+            options.extend(NOTE_TEMPLATES.iter().enumerate().map(|(index, (name, _))| {
+                format!(
+                    "{} {}  {}",
+                    if index == *selected { "▶" } else { " " },
+                    index + 1,
+                    name
+                )
+            }));
+            let lines = options.into_iter().map(Line::from).collect::<Vec<_>>();
+            frame.render_widget(
+                Paragraph::new(Text::from(lines))
+                    .style(Style::default().fg(p.text).bg(p.panel))
+                    .wrap(Wrap { trim: false })
+                    .block(
+                        Block::default()
+                            .title("  ✨ NOTE TEMPLATE LIBRARY  ")
+                            .borders(Borders::ALL)
+                            .border_style(Style::default().fg(p.secondary))
+                            .style(Style::default().bg(p.panel)),
+                    ),
+                box_area,
+            );
+            return;
+        }
         Modal::EditMenu { selected } => {
             let mut options = vec![
                 "↑/↓ navigate · Enter choose · Esc close".to_owned(),
