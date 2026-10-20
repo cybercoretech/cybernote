@@ -11,7 +11,7 @@
 ## Current workspace
 
 - `crates/cybernote-core`: local vault operations, Markdown frontmatter, SQLite FTS5 index, tags, `[[links]]` backlinks, attachments, recovery snapshots, and trash.
-- `crates/cybernote-tui`: Ratatui interface, keyboard interaction, editor handoff, palette chooser, and preview.
+- `crates/cybernote-tui`: Ratatui interface, keyboard interaction, editor handoff, eight-palette chooser, screenshot capture, folder management, vault switcher, and preview.
 - `docs/`: project site and contributor/product documentation.
 
 ## Planned shared core boundary
@@ -20,7 +20,7 @@ The domain API should accept explicit vault paths and return typed results. It s
 
 ## Data boundaries
 
-- `notes/*.md`: canonical note text and portable metadata.
+- `notes/<folder>/*.md`: canonical note text and portable metadata; nested folders are optional.
 - `attachments/<note-id>/`: attachment bytes referenced by relative Markdown links.
 - `.cybernote/index.sqlite3`: disposable local search/index state.
 - `.cybernote/history/`: local previous versions; future remote backups have independent retention.

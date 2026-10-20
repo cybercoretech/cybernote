@@ -33,7 +33,7 @@ struct Palette {
     muted: Color,
 }
 
-const PALETTES: [Palette; 4] = [
+const PALETTES: [Palette; 8] = [
     Palette {
         name: "CYBERCORE / Neon Cyan",
         bg: Color::Rgb(7, 12, 18),
@@ -70,6 +70,42 @@ const PALETTES: [Palette; 4] = [
         text: Color::Rgb(231, 248, 218),
         muted: Color::Rgb(125, 157, 114),
     },
+    Palette {
+        name: "CYBERCORE / Aurora",
+        bg: Color::Rgb(5, 15, 24),
+        panel: Color::Rgb(10, 29, 39),
+        accent: Color::Rgb(64, 255, 210),
+        secondary: Color::Rgb(116, 126, 255),
+        text: Color::Rgb(222, 250, 245),
+        muted: Color::Rgb(112, 159, 162),
+    },
+    Palette {
+        name: "CYBERCORE / Rose Quartz",
+        bg: Color::Rgb(20, 9, 18),
+        panel: Color::Rgb(39, 17, 34),
+        accent: Color::Rgb(255, 117, 187),
+        secondary: Color::Rgb(255, 205, 112),
+        text: Color::Rgb(255, 235, 246),
+        muted: Color::Rgb(174, 132, 157),
+    },
+    Palette {
+        name: "CYBERCORE / Arctic",
+        bg: Color::Rgb(7, 13, 24),
+        panel: Color::Rgb(14, 23, 42),
+        accent: Color::Rgb(113, 197, 255),
+        secondary: Color::Rgb(196, 151, 255),
+        text: Color::Rgb(231, 243, 255),
+        muted: Color::Rgb(126, 151, 183),
+    },
+    Palette {
+        name: "CYBERCORE / Solar Flare",
+        bg: Color::Rgb(22, 13, 5),
+        panel: Color::Rgb(43, 27, 9),
+        accent: Color::Rgb(255, 208, 64),
+        secondary: Color::Rgb(255, 104, 69),
+        text: Color::Rgb(255, 245, 220),
+        muted: Color::Rgb(176, 147, 99),
+    },
 ];
 
 struct App {
@@ -81,12 +117,20 @@ struct App {
     modal: Option<Modal>,
     palette: usize,
     palette_path: PathBuf,
+    vault_paths: Vec<PathBuf>,
+    vaults_path: PathBuf,
     status: String,
 }
 
 enum Modal {
     Help,
     Themes,
+    EditMenu {
+        selected: usize,
+    },
+    Vaults {
+        selected: usize,
+    },
     Prompt {
         label: &'static str,
         value: String,
@@ -96,7 +140,24 @@ enum Modal {
 enum PromptAction {
     NewNote,
     Attach,
+    CreateFolder,
+    MoveNote,
+    AddVault,
+    RenameNote,
+    EditTags,
 }
+
+const EDIT_OPTIONS: [&str; 9] = [
+    "Edit body · preferred editor",
+    "Edit body · Neovim",
+    "Edit body · Nano",
+    "Rename note",
+    "Edit tags",
+    "Append daily note template",
+    "Append meeting notes template",
+    "Append project brief template",
+    "Append checklist",
+];
 
 impl App {
     fn refresh(&mut self) {
@@ -127,6 +188,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = explicit_root
         .clone()
         .unwrap_or_else(|| home.join("Documents/Cybernote"));
+    let root = absolute_path(&root)?;
     let vault = Vault::open(&root)?;
     if explicit_root.is_none() {
         let legacy = home.join("Documents/darkstar/notes");
@@ -140,6 +202,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
+    let vaults_path = vaults_path(&home);
+    let mut vault_paths = load_vault_paths(&vaults_path);
+    if !vault_paths.contains(&root) {
+        vault_paths.push(root);
+    }
+    store_vault_paths(&vaults_path, &vault_paths)?;
     let mut app = App {
         vault,
         notes: Vec::new(),
@@ -149,6 +217,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         modal: None,
         palette: load_palette(&home),
         palette_path: palette_path(&home),
+        vault_paths,
+        vaults_path,
         status: "✨ Your thoughts, in your hands. Press ? for the controls.".into(),
     };
     app.refresh();
@@ -211,7 +281,7 @@ fn handle_key(terminal: &mut Term, app: &mut App, key: KeyEvent) -> io::Result<b
                     app.palette = (app.palette + 1) % PALETTES.len();
                     store_palette(&app.palette_path, app.palette);
                     app.modal = Some(modal);
-                } else if is_themes && let KeyCode::Char(n @ '1'..='4') = key.code {
+                } else if is_themes && let KeyCode::Char(n @ '1'..='8') = key.code {
                     app.palette = n.to_digit(10).unwrap_or(1) as usize - 1;
                     store_palette(&app.palette_path, app.palette);
                     app.modal = Some(modal);
@@ -219,6 +289,139 @@ fn handle_key(terminal: &mut Term, app: &mut App, key: KeyEvent) -> io::Result<b
                     app.modal = Some(modal);
                 }
             }
+            Modal::EditMenu { mut selected } => match key.code {
+                KeyCode::Esc | KeyCode::Char('q') => {}
+                KeyCode::Up | KeyCode::Char('k') => {
+                    selected = selected.saturating_sub(1);
+                    app.modal = Some(Modal::EditMenu { selected });
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    selected = (selected + 1).min(EDIT_OPTIONS.len() - 1);
+                    app.modal = Some(Modal::EditMenu { selected });
+                }
+                KeyCode::Enter => {
+                    if let Some(note) = app.selected_note().cloned() {
+                        match selected {
+                            0..=2 => {
+                                let editor = match selected {
+                                    1 => Some("nvim"),
+                                    2 => Some("nano"),
+                                    _ => None,
+                                };
+                                match edit_note(terminal, &app.vault, &note, editor) {
+                                    Ok(()) => {
+                                        app.status =
+                                            "✅ Body saved with a recovery snapshot.".into()
+                                    }
+                                    Err(error) => app.status = format!("Editor failed: {error}"),
+                                }
+                                app.refresh();
+                            }
+                            3 | 4 => {
+                                let (label, value, action) = if selected == 3 {
+                                    ("New note title", note.title, PromptAction::RenameNote)
+                                } else {
+                                    (
+                                        "Tags separated by commas",
+                                        note.tags.join(", "),
+                                        PromptAction::EditTags,
+                                    )
+                                };
+                                app.modal = Some(Modal::Prompt {
+                                    label,
+                                    value,
+                                    action,
+                                });
+                            }
+                            5..=8 => {
+                                let addition = match selected {
+                                    5 => "## Focus\n\n- [ ] \n\n## Notes\n\n## Wrap-up\n",
+                                    6 => {
+                                        "## Attendees\n\n## Agenda\n\n## Notes\n\n## Decisions\n\n## Action items\n- [ ] \n"
+                                    }
+                                    7 => {
+                                        "## Outcome\n\n## Context\n\n## Plan\n1. \n\n## Risks\n\n## Next steps\n- [ ] \n"
+                                    }
+                                    _ => "\n- [ ] \n- [ ] \n- [ ] \n",
+                                };
+                                let body = if note.body.trim().is_empty() {
+                                    addition.to_owned()
+                                } else {
+                                    format!("{}\n\n{}", note.body.trim_end(), addition)
+                                };
+                                match app.vault.save(
+                                    &note.id,
+                                    &note.title,
+                                    &body,
+                                    note.tags.clone(),
+                                    Some(note.updated),
+                                ) {
+                                    Ok(_) => {
+                                        app.status = format!(
+                                            "✨ Added {}",
+                                            EDIT_OPTIONS[selected].to_lowercase()
+                                        )
+                                    }
+                                    Err(error) => {
+                                        app.status = format!("Could not update note: {error}")
+                                    }
+                                }
+                                app.refresh();
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => app.modal = Some(Modal::EditMenu { selected }),
+            },
+            Modal::Vaults { mut selected } => match key.code {
+                KeyCode::Esc | KeyCode::Char('q') => {}
+                KeyCode::Up | KeyCode::Char('k') => {
+                    selected = selected.saturating_sub(1);
+                    app.modal = Some(Modal::Vaults { selected });
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    selected = (selected + 1).min(app.vault_paths.len().saturating_sub(1));
+                    app.modal = Some(Modal::Vaults { selected });
+                }
+                KeyCode::Enter => {
+                    if let Some(root) = app.vault_paths.get(selected).cloned() {
+                        match Vault::open(&root) {
+                            Ok(vault) => {
+                                app.vault = vault;
+                                app.query.clear();
+                                app.selected = 0;
+                                app.refresh();
+                                app.status = format!("🗃️ Opened vault {}", root.display());
+                            }
+                            Err(error) => app.status = format!("Could not open vault: {error}"),
+                        }
+                    }
+                }
+                KeyCode::Char('a') => {
+                    app.modal = Some(Modal::Prompt {
+                        label: "Path to existing vault folder (~/ supported)",
+                        value: String::new(),
+                        action: PromptAction::AddVault,
+                    })
+                }
+                KeyCode::Char('x') if app.vault_paths.len() > 1 => {
+                    let active = app.vault.root();
+                    if app
+                        .vault_paths
+                        .get(selected)
+                        .is_some_and(|path| path != active)
+                    {
+                        app.vault_paths.remove(selected);
+                        selected = selected.min(app.vault_paths.len().saturating_sub(1));
+                        if let Err(error) = store_vault_paths(&app.vaults_path, &app.vault_paths) {
+                            app.status = format!("Could not save vault list: {error}");
+                        }
+                    }
+                    app.modal = Some(Modal::Vaults { selected });
+                }
+                _ => app.modal = Some(Modal::Vaults { selected }),
+            },
             Modal::Prompt {
                 label,
                 mut value,
@@ -229,7 +432,7 @@ fn handle_key(terminal: &mut Term, app: &mut App, key: KeyEvent) -> io::Result<b
                     match action {
                         PromptAction::NewNote if !value.trim().is_empty() => {
                             if let Ok(note) = app.vault.create(value.trim(), "", Vec::new()) {
-                                if let Err(error) = edit_note(terminal, &app.vault, &note) {
+                                if let Err(error) = edit_note(terminal, &app.vault, &note, None) {
                                     app.status = format!("Editor failed: {error}");
                                 } else {
                                     app.status = "📝 Note created and saved.".into();
@@ -250,6 +453,99 @@ fn handle_key(terminal: &mut Term, app: &mut App, key: KeyEvent) -> io::Result<b
                                         app.status = format!("Attachment failed: {error}")
                                     }
                                 }
+                            }
+                        }
+                        PromptAction::CreateFolder => match app.vault.create_folder(value.trim()) {
+                            Ok(folder) => app.status = format!("📁 Created folder {folder}"),
+                            Err(error) => app.status = format!("Could not create folder: {error}"),
+                        },
+                        PromptAction::MoveNote => {
+                            if let Some(note) = app.selected_note().cloned() {
+                                match app.vault.move_note_to_folder(&note.id, value.trim()) {
+                                    Ok(note) => {
+                                        app.status = if note.folder.is_empty() {
+                                            "Moved note to the vault root.".into()
+                                        } else {
+                                            format!("Moved note to 📁 {}", note.folder)
+                                        };
+                                    }
+                                    Err(error) => {
+                                        app.status = format!("Could not move note: {error}")
+                                    }
+                                }
+                            }
+                        }
+                        PromptAction::RenameNote | PromptAction::EditTags => {
+                            if let Some(note) = app.selected_note().cloned() {
+                                if matches!(action, PromptAction::RenameNote)
+                                    && value.trim().is_empty()
+                                {
+                                    app.status = "A note title cannot be empty.".into();
+                                    app.refresh();
+                                    return Ok(false);
+                                }
+                                let (title, tags) = if matches!(action, PromptAction::RenameNote) {
+                                    (value.trim().to_owned(), note.tags.clone())
+                                } else {
+                                    (
+                                        note.title.clone(),
+                                        value
+                                            .split(',')
+                                            .map(str::trim)
+                                            .filter(|tag| !tag.is_empty())
+                                            .map(str::to_owned)
+                                            .collect(),
+                                    )
+                                };
+                                match app.vault.save(
+                                    &note.id,
+                                    &title,
+                                    &note.body,
+                                    tags,
+                                    Some(note.updated),
+                                ) {
+                                    Ok(_) => {
+                                        app.status = if matches!(action, PromptAction::RenameNote) {
+                                            "✏️ Note renamed and history saved.".into()
+                                        } else {
+                                            "🏷️ Tags updated and history saved.".into()
+                                        }
+                                    }
+                                    Err(error) => {
+                                        app.status = format!("Could not update note: {error}")
+                                    }
+                                }
+                            }
+                        }
+                        PromptAction::AddVault => {
+                            let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+                            let candidate = expand_path(value.trim(), &home);
+                            match candidate.canonicalize() {
+                                Ok(root) if root.is_dir() => match Vault::open(&root) {
+                                    Ok(vault) => {
+                                        if !app.vault_paths.contains(&root) {
+                                            app.vault_paths.push(root.clone());
+                                        }
+                                        app.vault = vault;
+                                        app.query.clear();
+                                        app.selected = 0;
+                                        app.refresh();
+                                        if let Err(error) =
+                                            store_vault_paths(&app.vaults_path, &app.vault_paths)
+                                        {
+                                            app.status = format!(
+                                                "Vault opened, but list save failed: {error}"
+                                            );
+                                        } else {
+                                            app.status =
+                                                format!("🗃️ Added vault {}", root.display());
+                                        }
+                                    }
+                                    Err(error) => {
+                                        app.status = format!("Could not open vault: {error}")
+                                    }
+                                },
+                                _ => app.status = "Choose an existing folder path.".into(),
                             }
                         }
                         _ => {}
@@ -319,10 +615,13 @@ fn handle_key(terminal: &mut Term, app: &mut App, key: KeyEvent) -> io::Result<b
                 action: PromptAction::NewNote,
             })
         }
-        KeyCode::Char('e') | KeyCode::Enter => {
+        KeyCode::Char('e') if app.selected_note().is_some() => {
+            app.modal = Some(Modal::EditMenu { selected: 0 })
+        }
+        KeyCode::Enter => {
             if let Some(note) = app.selected_note().cloned() {
-                match edit_note(terminal, &app.vault, &note) {
-                    Ok(()) => app.status = "✅ Changes saved with a recovery snapshot.".into(),
+                match edit_note(terminal, &app.vault, &note, None) {
+                    Ok(()) => app.status = "✅ Body saved with a recovery snapshot.".into(),
                     Err(error) => app.status = format!("Editor failed: {error}"),
                 }
                 app.refresh();
@@ -336,6 +635,37 @@ fn handle_key(terminal: &mut Term, app: &mut App, key: KeyEvent) -> io::Result<b
                     action: PromptAction::Attach,
                 });
             }
+        }
+        KeyCode::Char('s') => {
+            if app.selected_note().is_some()
+                && let Err(error) = capture_screenshot(terminal, app)
+            {
+                app.status = format!("Screenshot capture failed: {error}");
+            }
+        }
+        KeyCode::Char('f') => {
+            app.modal = Some(Modal::Prompt {
+                label: "New folder path inside this vault",
+                value: String::new(),
+                action: PromptAction::CreateFolder,
+            })
+        }
+        KeyCode::Char('m') => {
+            if app.selected_note().is_some() {
+                app.modal = Some(Modal::Prompt {
+                    label: "Move note to folder (blank = vault root)",
+                    value: String::new(),
+                    action: PromptAction::MoveNote,
+                })
+            }
+        }
+        KeyCode::Char('v') => {
+            let selected = app
+                .vault_paths
+                .iter()
+                .position(|path| path == app.vault.root())
+                .unwrap_or(0);
+            app.modal = Some(Modal::Vaults { selected });
         }
         KeyCode::Char('d') => {
             if let Some(note) = app.selected_note().cloned() {
@@ -376,6 +706,55 @@ fn palette_path(home: &Path) -> PathBuf {
         .join("cybernote/palette")
 }
 
+fn vaults_path(home: &Path) -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| home.join(".config"))
+        .join("cybernote/vaults.json")
+}
+
+fn absolute_path(path: &Path) -> io::Result<PathBuf> {
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        Ok(env::current_dir()?.join(path))
+    }
+}
+
+fn load_vault_paths(path: &Path) -> Vec<PathBuf> {
+    fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Vec<String>>(&bytes).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|path| absolute_path(Path::new(&path)).ok())
+        .filter(|path| path.is_dir())
+        .collect()
+}
+
+fn store_vault_paths(path: &Path, vaults: &[PathBuf]) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let roots = vaults
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    fs::write(
+        path,
+        serde_json::to_vec_pretty(&roots).map_err(io::Error::other)?,
+    )
+}
+
+fn expand_path(value: &str, home: &Path) -> PathBuf {
+    if value == "~" {
+        home.to_path_buf()
+    } else if let Some(relative) = value.strip_prefix("~/") {
+        home.join(relative)
+    } else {
+        PathBuf::from(value)
+    }
+}
+
 fn load_palette(home: &Path) -> usize {
     fs::read_to_string(palette_path(home))
         .ok()
@@ -391,16 +770,43 @@ fn store_palette(path: &Path, palette: usize) {
     let _ = fs::write(path, palette.to_string());
 }
 
-fn edit_note(terminal: &mut Term, vault: &Vault, note: &Note) -> io::Result<()> {
-    let editor = env::var("EDITOR").unwrap_or_else(|_| "vi".into());
+fn edit_note(
+    terminal: &mut Term,
+    vault: &Vault,
+    note: &Note,
+    requested_editor: Option<&str>,
+) -> io::Result<()> {
+    let configured = requested_editor
+        .map(str::to_owned)
+        .or_else(|| env::var("VISUAL").ok())
+        .or_else(|| env::var("EDITOR").ok());
+    let mut command_parts = configured
+        .as_deref()
+        .map(str::split_whitespace)
+        .map(Iterator::collect::<Vec<_>>)
+        .unwrap_or_default();
+    if command_parts.is_empty() {
+        command_parts = ["nvim", "nano", "vi"]
+            .into_iter()
+            .find(|candidate| command_exists(candidate))
+            .map(|candidate| vec![candidate])
+            .unwrap_or_default();
+    }
+    let Some((program, args)) = command_parts.split_first() else {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "No editor found. Install Neovim or Nano, or set $EDITOR.",
+        ));
+    };
     let mut temp = tempfile::NamedTempFile::new()?;
     temp.write_all(format!("{}\n", note.body).as_bytes())?;
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    let result = Command::new(editor).arg(temp.path()).status();
-    enable_raw_mode()?;
-    execute!(terminal.backend_mut(), EnterAlternateScreen)?;
-    terminal.clear()?;
+    let result = Command::new(program).args(args).arg(temp.path()).status();
+    let restore = enable_raw_mode()
+        .and_then(|()| execute!(terminal.backend_mut(), EnterAlternateScreen))
+        .and_then(|()| terminal.clear());
+    restore?;
     match result {
         Ok(status) if status.success() => {
             let body = fs::read_to_string(temp.path())?;
@@ -420,6 +826,58 @@ fn edit_note(terminal: &mut Term, vault: &Vault, note: &Note) -> io::Result<()> 
     Ok(())
 }
 
+fn command_exists(program: &str) -> bool {
+    if program.contains('/') {
+        return Path::new(program).is_file();
+    }
+    env::var_os("PATH").is_some_and(|paths| {
+        env::split_paths(&paths).any(|directory| directory.join(program).is_file())
+    })
+}
+
+fn capture_screenshot(terminal: &mut Term, app: &mut App) -> io::Result<()> {
+    let note = app
+        .selected_note()
+        .cloned()
+        .ok_or_else(|| io::Error::other("select a note before capturing a screenshot"))?;
+    let capture_dir = tempfile::tempdir()?;
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    let result = Command::new("omarchy")
+        .args(["capture", "screenshot", "region", "save"])
+        .env("OMASNAP_SCREENSHOT_DIR", capture_dir.path())
+        .status();
+    enable_raw_mode()?;
+    execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+    terminal.clear()?;
+    let status = result?;
+    if !status.success() {
+        return Err(io::Error::other("screenshot tool returned an error"));
+    }
+    let image = fs::read_dir(capture_dir.path())?
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .find(|path| {
+            path.extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| {
+                    matches!(
+                        extension.to_ascii_lowercase().as_str(),
+                        "png" | "jpg" | "jpeg" | "webp"
+                    )
+                })
+        })
+        .ok_or_else(|| io::Error::other("screenshot tool did not save an image"))?;
+    let attached = app
+        .vault
+        .attach(&note.id, &image)
+        .map_err(|error| io::Error::other(error.to_string()))?;
+    app.status = format!(
+        "📸 Screenshot attached: {}",
+        attached.file_name().unwrap_or_default().to_string_lossy()
+    );
+    Ok(())
+}
+
 fn draw(frame: &mut Frame, app: &App) {
     let p = PALETTES[app.palette];
     let area = frame.area();
@@ -429,7 +887,7 @@ fn draw(frame: &mut Frame, app: &App) {
         .constraints([
             Constraint::Length(3),
             Constraint::Min(5),
-            Constraint::Length(4),
+            Constraint::Length(5),
         ])
         .split(area);
     draw_header(frame, rows[0], app, p);
@@ -445,17 +903,23 @@ fn draw(frame: &mut Frame, app: &App) {
         app.status.clone()
     };
     let controls = [
-        [
+        vec![
             ("j/k ↑↓", "move"),
             ("/", "search"),
             ("n", "new"),
             ("e", "edit"),
-            ("a", "attach"),
         ],
-        [
+        vec![
+            ("a", "attach"),
+            ("s", "screenshot"),
+            ("f", "folder"),
+            ("m", "move note"),
+        ],
+        vec![
+            ("v", "vaults"),
             ("d", "trash"),
             ("u", "restore"),
-            ("p", "themes"),
+            ("p", "colors"),
             ("?", "help"),
             ("q", "quit"),
         ],
@@ -504,7 +968,7 @@ fn draw(frame: &mut Frame, app: &App) {
         rows[2],
     );
     if let Some(modal) = &app.modal {
-        draw_modal(frame, area, modal, p);
+        draw_modal(frame, area, modal, app, p);
     }
 }
 
@@ -549,6 +1013,11 @@ fn draw_notes(frame: &mut Frame, area: Rect, app: &App, p: Palette) {
             } else {
                 format!("\n  🏷 {}", note.tags.join("  #"))
             };
+            let folder = if note.folder.is_empty() {
+                "📁 root".to_owned()
+            } else {
+                format!("📁 {}", note.folder)
+            };
             ListItem::new(Text::from(vec![
                 Line::from(Span::styled(
                     format!("📝 {}", note.title),
@@ -558,7 +1027,10 @@ fn draw_notes(frame: &mut Frame, area: Rect, app: &App, p: Palette) {
                     format!("  {}", preview_text(&note.body, 62)),
                     Style::default().fg(p.muted),
                 )),
-                Line::from(Span::styled(tags, Style::default().fg(p.secondary))),
+                Line::from(vec![
+                    Span::styled(folder, Style::default().fg(p.accent)),
+                    Span::styled(tags, Style::default().fg(p.secondary)),
+                ]),
             ]))
         })
         .collect::<Vec<_>>();
@@ -621,7 +1093,15 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App, p: Palette) {
         )),
         Line::from(Span::styled(tags, Style::default().fg(p.secondary))),
         Line::from(Span::styled(
-            format!("↗ {backlinks} backlinks   ·   🕘 updated {}", note.updated),
+            format!(
+                "📁 {}   ·   ↗ {backlinks} backlinks   ·   🕘 updated {}",
+                if note.folder.is_empty() {
+                    "root"
+                } else {
+                    &note.folder
+                },
+                note.updated
+            ),
             Style::default().fg(p.muted),
         )),
         Line::from(""),
@@ -641,8 +1121,47 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App, p: Palette) {
     );
 }
 
-fn draw_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: Palette) {
-    let box_area = centered_rect(64, 62, area);
+fn draw_modal(frame: &mut Frame, area: Rect, modal: &Modal, app: &App, p: Palette) {
+    if let Modal::Vaults { selected } = modal {
+        let box_area = centered_rect(78, 70, area);
+        frame.render_widget(Clear, box_area);
+        let mut lines = vec![Line::from(Span::styled(
+            "↑/↓ select · Enter open · a add existing folder · x remove from list",
+            Style::default().fg(p.text),
+        ))];
+        for (index, root) in app.vault_paths.iter().enumerate() {
+            let active = root == app.vault.root();
+            let is_selected = index == *selected;
+            let marker = if is_selected { "▶ " } else { "  " };
+            let active_mark = if active { "  ● CURRENT" } else { "" };
+            let style = if is_selected {
+                Style::default()
+                    .fg(p.bg)
+                    .bg(p.accent)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(p.text).bg(p.panel)
+            };
+            lines.push(Line::from(Span::styled(
+                format!("{marker}{}{active_mark}", root.display()),
+                style,
+            )));
+        }
+        frame.render_widget(
+            Paragraph::new(Text::from(lines))
+                .style(Style::default().fg(p.text).bg(p.panel))
+                .block(
+                    Block::default()
+                        .title("  🗃 VAULT SELECTOR  ")
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(p.secondary))
+                        .style(Style::default().bg(p.panel)),
+                ),
+            box_area,
+        );
+        return;
+    }
+    let box_area = centered_rect(72, 72, area);
     frame.render_widget(Clear, box_area);
     let (title, text) = match modal {
         Modal::Help => (
@@ -651,8 +1170,13 @@ fn draw_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: Palette) {
                 "j/k or ↑/↓   Navigate the note stream",
                 "/             Search notes instantly",
                 "n             Capture a new note in $EDITOR",
-                "e or Enter    Edit the selected note in $EDITOR",
+                "e             Open the full edit menu",
+                "Enter         Quick edit in your preferred editor",
                 "a             Attach a file to the selected note",
+                "s             Capture a region screenshot into the selected note",
+                "f             Create an in-vault folder",
+                "m             Move the selected note to a folder",
+                "v             Switch or add a vault",
                 "d             Move a note into recoverable trash",
                 "u             Restore the most recently trashed note",
                 "p             Open the palette chooser",
@@ -670,16 +1194,54 @@ fn draw_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: Palette) {
                 "2  PLASMA          violet + ion teal",
                 "3  EMBER           molten orange + magenta",
                 "4  BIOHAZARD       acid green + bio teal",
+                "5  AURORA          mint + electric indigo",
+                "6  ROSE QUARTZ     neon rose + warm gold",
+                "7  ARCTIC          ice blue + violet",
+                "8  SOLAR FLARE     radiant gold + hot orange",
                 "",
-                "↑/↓ select · Enter apply · Esc close",
+                "1–8 choose · ↑/↓ browse · Enter apply · Esc close",
                 "",
                 "Theme changes apply instantly and never alter your notes.",
             ],
         ),
+        Modal::EditMenu { selected } => {
+            let mut options = vec![
+                "↑/↓ navigate · Enter choose · Esc close".to_owned(),
+                String::new(),
+            ];
+            options.extend(EDIT_OPTIONS.iter().enumerate().map(|(index, option)| {
+                format!(
+                    "{} {}  {}",
+                    if index == *selected { "▶" } else { " " },
+                    index + 1,
+                    option
+                )
+            }));
+            options.push(String::new());
+            options.push(
+                "Body edits use $VISUAL or $EDITOR; Neovim/Nano are available directly.".into(),
+            );
+            let lines = options.into_iter().map(Line::from).collect::<Vec<_>>();
+            frame.render_widget(
+                Paragraph::new(Text::from(lines))
+                    .style(Style::default().fg(p.text).bg(p.panel))
+                    .wrap(Wrap { trim: false })
+                    .block(
+                        Block::default()
+                            .title("  ✏️ NOTE EDIT STUDIO  ")
+                            .borders(Borders::ALL)
+                            .border_style(Style::default().fg(p.secondary))
+                            .style(Style::default().bg(p.panel)),
+                    ),
+                box_area,
+            );
+            return;
+        }
         Modal::Prompt { label, value, .. } => (
             *label,
             vec![value.as_str(), "", "Enter confirm · Esc cancel"],
         ),
+        Modal::Vaults { .. } => unreachable!("vault picker is rendered above"),
     };
     let lines = text
         .into_iter()

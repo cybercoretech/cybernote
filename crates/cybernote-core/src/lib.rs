@@ -27,6 +27,7 @@ pub type Result<T> = std::result::Result<T, VaultError>;
 pub struct Note {
     pub id: String,
     pub title: String,
+    pub folder: String,
     pub tags: Vec<String>,
     pub created: u64,
     pub updated: u64,
@@ -86,11 +87,8 @@ impl Vault {
     fn rebuild_index(&self) -> Result<()> {
         let db = self.connect()?;
         db.execute("DELETE FROM note_search", [])?;
-        for entry in fs::read_dir(&self.notes_dir)? {
-            let path = entry?.path();
-            if path.extension().is_some_and(|ext| ext == "md")
-                && let Ok(note) = read_note(&path)
-            {
+        for path in markdown_files(&self.notes_dir)? {
+            if let Ok(note) = read_note(&path) {
                 db.execute(
                     "INSERT INTO note_search (id, title, body, tags) VALUES (?1, ?2, ?3, ?4)",
                     params![note.id, note.title, note.body, note.tags.join(" ")],
@@ -102,11 +100,8 @@ impl Vault {
 
     pub fn list(&self) -> Result<Vec<Note>> {
         let mut notes = Vec::new();
-        for entry in fs::read_dir(&self.notes_dir)? {
-            let path = entry?.path();
-            if path.extension().is_some_and(|ext| ext == "md")
-                && let Ok(note) = read_note(&path)
-            {
+        for path in markdown_files(&self.notes_dir)? {
+            if let Ok(note) = read_note(&path) {
                 notes.push(note);
             }
         }
@@ -160,16 +155,52 @@ impl Vault {
     }
 
     pub fn get(&self, id: &str) -> Result<Note> {
-        let path = self.notes_dir.join(format!("{id}.md"));
-        if !path.exists() {
-            return Err(VaultError::NotFound(id.into()));
-        }
-        read_note(&path)
+        read_note(&self.find_note_path(id)?)
     }
 
     pub fn create(&self, title: &str, body: &str, tags: Vec<String>) -> Result<Note> {
         let id = Uuid::new_v4().simple().to_string();
-        self.save(&id, title, body, tags, None)
+        self.save_in_folder(&id, title, body, tags, "", None)
+    }
+
+    pub fn create_folder(&self, folder: &str) -> Result<String> {
+        let folder = validate_folder(folder)?;
+        if folder.is_empty() {
+            return Err(VaultError::InvalidNote(
+                "folder name cannot be empty".into(),
+            ));
+        }
+        fs::create_dir_all(self.notes_dir.join(&folder))?;
+        Ok(folder)
+    }
+
+    pub fn folders(&self) -> Result<Vec<String>> {
+        let mut folders = Vec::new();
+        collect_folders(&self.notes_dir, &self.notes_dir, &mut folders)?;
+        folders.sort();
+        Ok(folders)
+    }
+
+    pub fn move_note_to_folder(&self, id: &str, folder: &str) -> Result<Note> {
+        let folder = validate_folder(folder)?;
+        let note = self.get(id)?;
+        if note.folder == folder {
+            return Ok(note);
+        }
+        let original_path = note.path.clone();
+        if !folder.is_empty() {
+            fs::create_dir_all(self.notes_dir.join(&folder))?;
+        }
+        let moved = self.save_in_folder(
+            &note.id,
+            &note.title,
+            &note.body,
+            note.tags.clone(),
+            &folder,
+            Some(note.updated),
+        )?;
+        fs::remove_file(original_path)?;
+        Ok(moved)
     }
 
     pub fn save(
@@ -180,12 +211,30 @@ impl Vault {
         tags: Vec<String>,
         expected_updated: Option<u64>,
     ) -> Result<Note> {
-        let path = self.notes_dir.join(format!("{id}.md"));
-        let prior = if path.exists() {
-            Some(read_note(&path)?)
-        } else {
-            None
+        let folder = match self.find_note_path(id) {
+            Ok(path) => read_note(&path)?.folder,
+            Err(VaultError::NotFound(_)) => String::new(),
+            Err(error) => return Err(error),
         };
+        self.save_in_folder(id, title, body, tags, &folder, expected_updated)
+    }
+
+    fn save_in_folder(
+        &self,
+        id: &str,
+        title: &str,
+        body: &str,
+        tags: Vec<String>,
+        folder: &str,
+        expected_updated: Option<u64>,
+    ) -> Result<Note> {
+        let folder = validate_folder(folder)?;
+        let path = self.notes_dir.join(&folder).join(format!("{id}.md"));
+        let prior = self
+            .find_note_path(id)
+            .ok()
+            .map(|prior_path| read_note(&prior_path))
+            .transpose()?;
         if let (Some(expected), Some(old)) = (expected_updated, prior.as_ref())
             && expected != old.updated
         {
@@ -210,12 +259,16 @@ impl Vault {
         let note = Note {
             id: id.to_owned(),
             title: title.trim().to_owned(),
+            folder,
             tags: normalized_tags,
             created,
             updated: now,
             body: body.trim().to_owned(),
             path,
         };
+        if let Some(parent) = note.path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         fs::write(&note.path, serialize_note(&note))?;
         let db = self.connect()?;
         db.execute("DELETE FROM note_search WHERE id = ?1", params![note.id])?;
@@ -224,6 +277,20 @@ impl Vault {
             params![note.id, note.title, note.body, note.tags.join(" ")],
         )?;
         Ok(note)
+    }
+
+    fn find_note_path(&self, id: &str) -> Result<PathBuf> {
+        let expected = format!("{id}.md");
+        for path in markdown_files(&self.notes_dir)? {
+            if path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy() == expected)
+                && read_note(&path).is_ok_and(|note| note.id == id)
+            {
+                return Ok(path);
+            }
+        }
+        Err(VaultError::NotFound(id.into()))
     }
 
     pub fn search(&self, query: &str) -> Result<Vec<Note>> {
@@ -314,12 +381,18 @@ impl Vault {
             return Ok(None);
         };
         let note = read_note(&source)?;
-        let destination = self.notes_dir.join(format!("{}.md", note.id));
+        let destination = self
+            .notes_dir
+            .join(validate_folder(&note.folder)?)
+            .join(format!("{}.md", note.id));
         if destination.exists() {
             return Err(VaultError::InvalidNote(format!(
                 "note {} already exists in the vault",
                 note.id
             )));
+        }
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)?;
         }
         fs::rename(source, &destination)?;
         let restored = read_note(&destination)?;
@@ -359,6 +432,67 @@ fn epoch_millis() -> u64 {
         .as_millis() as u64
 }
 
+fn validate_folder(folder: &str) -> Result<String> {
+    let folder = folder.trim();
+    if folder.is_empty() {
+        return Ok(String::new());
+    }
+    let path = Path::new(folder);
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        let std::path::Component::Normal(component) = component else {
+            return Err(VaultError::InvalidNote(format!(
+                "invalid vault folder path: {folder}"
+            )));
+        };
+        normalized.push(component);
+    }
+    if path.is_absolute() {
+        return Err(VaultError::InvalidNote(format!(
+            "invalid vault folder path: {folder}"
+        )));
+    }
+    Ok(normalized.to_string_lossy().into_owned())
+}
+
+fn markdown_files(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    collect_markdown_files(root, &mut files)?;
+    Ok(files)
+}
+
+fn collect_markdown_files(directory: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            collect_markdown_files(&entry.path(), files)?;
+        } else if file_type.is_file()
+            && entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "md")
+        {
+            files.push(entry.path());
+        }
+    }
+    Ok(())
+}
+
+fn collect_folders(root: &Path, directory: &Path, folders: &mut Vec<String>) -> Result<()> {
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let path = entry.path();
+        let relative = path.strip_prefix(root).unwrap_or(&path);
+        folders.push(relative.to_string_lossy().into_owned());
+        collect_folders(root, &path, folders)?;
+    }
+    Ok(())
+}
+
 fn serialize_note(note: &Note) -> String {
     let tags = note
         .tags
@@ -367,9 +501,10 @@ fn serialize_note(note: &Note) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     format!(
-        "---\nid: {}\ntitle: {}\ntags: {}\ncreated: {}\nupdated: {}\n---\n\n{}\n",
+        "---\nid: {}\ntitle: {}\nfolder: {}\ntags: {}\ncreated: {}\nupdated: {}\n---\n\n{}\n",
         note.id,
         note.title.replace('\n', " "),
+        note.folder,
         tags,
         note.created,
         note.updated,
@@ -385,6 +520,7 @@ fn read_note(path: &Path) -> Result<Note> {
     }
     let mut id = None;
     let mut title = None;
+    let mut folder = String::new();
     let mut tags = Vec::new();
     let mut created = 0;
     let mut updated = 0;
@@ -404,6 +540,7 @@ fn read_note(path: &Path) -> Result<Note> {
             match key.trim() {
                 "id" => id = Some(value.to_owned()),
                 "title" => title = Some(value.to_owned()),
+                "folder" => folder = validate_folder(value)?,
                 "tags" => {
                     tags = value
                         .split_whitespace()
@@ -426,6 +563,7 @@ fn read_note(path: &Path) -> Result<Note> {
     Ok(Note {
         id,
         title: title.unwrap_or_else(|| "Untitled".into()),
+        folder,
         tags,
         created,
         updated,
@@ -537,5 +675,36 @@ mod tests {
         assert_eq!(restored.id, note.id);
         assert_eq!(vault.search("important").unwrap().len(), 1);
         assert!(vault.restore_latest_trash().unwrap().is_none());
+    }
+
+    #[test]
+    fn folders_can_organize_notes_without_breaking_search_or_restore() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = Vault::open(dir.path()).unwrap();
+        let note = vault
+            .create("Folder test", "A searchable note", vec!["folders".into()])
+            .unwrap();
+
+        vault.create_folder("Projects/Cybernote").unwrap();
+        let moved = vault
+            .move_note_to_folder(&note.id, "Projects/Cybernote")
+            .unwrap();
+        assert_eq!(moved.folder, "Projects/Cybernote");
+        assert_eq!(vault.get(&note.id).unwrap().path, moved.path);
+        assert_eq!(vault.search("searchable").unwrap()[0].folder, moved.folder);
+        assert_eq!(vault.folders().unwrap(), ["Projects", "Projects/Cybernote"]);
+
+        vault.trash(&note.id).unwrap();
+        let restored = vault.restore_latest_trash().unwrap().unwrap();
+        assert_eq!(restored.folder, "Projects/Cybernote");
+        assert_eq!(vault.get(&note.id).unwrap().body, "A searchable note");
+    }
+
+    #[test]
+    fn folder_paths_cannot_escape_the_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = Vault::open(dir.path()).unwrap();
+        assert!(vault.create_folder("../outside").is_err());
+        assert!(vault.create_folder("/tmp/outside").is_err());
     }
 }

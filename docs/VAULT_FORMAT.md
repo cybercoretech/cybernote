@@ -2,12 +2,13 @@
 
 ## Canonical files
 
-Each note is a UTF-8 Markdown file in `notes/<stable-id>.md`. The first milestone uses a simple header:
+Each note is a UTF-8 Markdown file in `notes/<folder>/<stable-id>.md` (or directly in `notes/` for the vault root). The first milestone uses a simple header:
 
 ```markdown
 ---
 id: 1234abcd
 title: A note title
+folder: Projects
 tags: #ideas #project
 created: 1792457712345
 updated: 1792457712345
@@ -16,7 +17,7 @@ updated: 1792457712345
 Markdown body. Link to another note with `[[note-id]]` or `[[exact note title]]`.
 ```
 
-Times are Unix epoch milliseconds. IDs are opaque stable identifiers and do not depend on the title, so renaming a note does not invalidate links. Tags are plain words. Attachment links are relative paths into `attachments/<note-id>/`.
+Times are Unix epoch milliseconds. IDs are opaque stable identifiers and do not depend on the title, so renaming or moving a note does not invalidate links. The optional `folder` field is a relative path beneath `notes/`; older notes without it are treated as root notes. Tags are plain words. Attachment links are relative paths into `attachments/<note-id>/`.
 
 ## Derived state
 
