@@ -7,6 +7,97 @@
   <meta name="description" content="Cybernote is a local-first, Markdown-native notebook for the terminal, Android, and your own encrypted sync destinations.">
   <title>Cybernote — your notes, your orbit</title>
   <link rel="stylesheet" href="site.css">
+  <link rel="stylesheet" href="https://cybercoretech.github.io/kit/chooser.css">
+  <script>window.SITE = Object.assign(window.SITE || {}, {"siteLabel": "Cyan", "themeVars": {"panel": "--surface", "white": "--text", "cyan": "--accent", "hot_pink": "--secondary"}});</script>
+  <script type="module" src="https://cybercoretech.github.io/kit/chooser.js"></script>
+  <script>
+    /* Cybernote's derived shades follow the universal chooser's palette. */
+    document.addEventListener('cc:theme', function (e) {
+      var p = e.detail && e.detail.palette, r = document.documentElement;
+      if (!p) { ['--surface2', '--glow'].forEach(function (v) { r.style.removeProperty(v); }); return; }
+      r.style.setProperty('--surface2', 'color-mix(in srgb, #' + p.panel + ' 82%, #' + p.white + ')');
+      r.style.setProperty('--glow', 'color-mix(in srgb, #' + p.cyan + ' 16%, transparent)');
+    });
+  </script>
+  <style id="cc-mobile-first">
+/* Mobile floor (phones + tablets): readable text and finger-sized targets.
+   Generated per range from what renders under 11px / 24px; desktop untouched. */
+@media (max-width: 600px) {
+  p.release-note,
+  span.terminal-name,
+  span.terminal-live,
+  aside > b,
+  aside > span,
+  small,
+  div.term-head,
+  div.term-head > span,
+  div.term-foot,
+  section.ticker > div,
+  span.card-tag,
+  div.security-stamp > span,
+  span.state,
+  footer.wrap > p,
+  p > a,
+  footer.wrap > div > a { font-size: 11px !important; }
+}
+@media (min-width: 601px) and (max-width: 860px) {
+  p.release-note,
+  span.terminal-name,
+  span.terminal-live,
+  aside > b,
+  aside > span,
+  small,
+  div.term-head,
+  div.term-head > span,
+  div.term-foot,
+  section.ticker > div,
+  span.card-tag,
+  div.security-stamp > span,
+  span.state,
+  footer.wrap > p,
+  p > a,
+  footer.wrap > div > a { font-size: 11px !important; }
+}
+@media (min-width: 861px) and (max-width: 1024px) {
+  p.release-note,
+  span.terminal-name,
+  span.terminal-live,
+  aside > b,
+  aside > span,
+  small,
+  div.term-head,
+  div.term-head > span,
+  div.term-foot,
+  section.ticker > div,
+  span.card-tag,
+  div.security-stamp > span,
+  span.state,
+  footer.wrap > p,
+  p > a,
+  footer.wrap > div > a { font-size: 11px !important; }
+}
+@media (pointer: coarse) {
+  a.text-link,
+  footer.wrap > div > a { min-height: 24px; min-width: 24px; }
+}
+/* Layout fixes: phones and tablets only; laptops and desktops untouched. */
+@media (max-width: 1024px) {
+  /* Mobile first: nothing may make the page wider than the screen.
+     Grid/flex columns may shrink below their widest line; code scrolls in place. */
+  pre { max-width: 100%; overflow-x: auto; }
+  img, video { max-width: 100%; height: auto; }
+  section.ticker > div { white-space: normal; overflow-wrap: anywhere; }
+  div > i { white-space: normal; overflow-wrap: anywhere; }
+  /* Long paths and URLs in inline code may break anywhere instead of widening the page. */
+  :not(pre) > code { overflow-wrap: anywhere; }
+  /* Decorative layers (glows, grids, noise) run past the edge of the screen.
+     The body contains and clips them (the root clip stops the body handing its
+     overflow to the window), so phones keep a true device-width layout instead
+     of zooming the whole page out. Nothing inside the screen changes. */
+  html { overflow-x: clip; }
+  body { position: relative; overflow-x: clip; }
+}
+  </style>
 </head>
 <body>
   <div class="flow-field" aria-hidden="true"></div>
@@ -14,7 +105,7 @@
   <header class="topbar wrap">
     <a class="brand" href="#top" aria-label="Cybernote home"><span class="brand-mark">✦</span> CYBERNOTE</a>
     <nav aria-label="Main navigation"><a href="#features">Features</a><a href="#security">Security</a><a href="#roadmap">Roadmap</a><a href="https://github.com/cybercoretech/cybernote">GitHub ↗</a><a data-cybercore-master-docs href="https://cybercoretech.github.io/cybercore/docs.html" style="color:#22e6ff;border:1px solid #263454;border-radius:999px;padding:7px 12px;text-decoration:none;font:600 .7rem ui-monospace,monospace;letter-spacing:.08em;white-space:nowrap">MASTER DOCS ↗</a></nav>
-    <button class="theme-trigger" id="theme-open" aria-haspopup="dialog" aria-controls="theme-dialog">🎨 <span>Theme lab</span></button>
+    <cybercore-theme-chooser adopt><button class="theme-trigger" id="theme-open" type="button">Cyan</button></cybercore-theme-chooser>
   </header>
   <main id="top">
     <section class="hero wrap">
@@ -49,7 +140,6 @@
     <div style="width:min(1160px,calc(100% - 44px));margin-inline:auto"><cybercore-contact><a href="mailto:dev@cybercoretech.net">dev@cybercoretech.net</a></cybercore-contact></div>
   </section>
   <footer class="wrap footer"><a class="brand" href="#top"><span class="brand-mark">✦</span> CYBERNOTE</a><p>Designed for your thoughts. Built by <a href="https://github.com/cybercoretech">Cybercore</a>.</p><div><a href="ARCHITECTURE.md">Docs</a><a href="BACKUPS.md">Backups</a><a href="https://github.com/cybercoretech/cybernote/blob/main/LICENSE">MIT License</a></div></footer>
-  <dialog id="theme-dialog" class="modal"><form method="dialog"><button class="modal-close" aria-label="Close">×</button><p class="eyebrow">🎨 CYBERCORE THEME CHOOSER</p><h2>Set your frequency.</h2><p class="modal-copy">Your palette follows you across the Cybernote experience.</p><div class="theme-options"><button class="theme-option" data-theme-choice="cyan"><i></i><b>Neon Cyan</b><small>Electric · signature</small></button><button class="theme-option" data-theme-choice="plasma"><i></i><b>Plasma</b><small>Violet · ion teal</small></button><button class="theme-option" data-theme-choice="ember"><i></i><b>Ember</b><small>Heat · magenta</small></button><button class="theme-option" data-theme-choice="bio"><i></i><b>Biohazard</b><small>Acid · bio teal</small></button></div><p class="modal-hint">Palette saved on this device · does not touch your vault.</p></form></dialog>
   <dialog id="quickstart-dialog" class="modal quick-modal"><form method="dialog"><button class="modal-close" aria-label="Close">×</button><p class="eyebrow">⌘ QUICK START</p><h2>Launch your local vault.</h2><p>With Rust installed, run Cybernote from the project checkout:</p><pre><code>cargo run -p cybernote-tui -- ~/Documents/Cybernote</code></pre><p class="modal-hint">Set <code>EDITOR</code> to your favorite editor. Your Markdown stays in the vault folder.</p><a class="button primary" href="https://github.com/cybercoretech/cybernote">Open repository ↗</a></form></dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="site.js"></script>
